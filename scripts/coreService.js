@@ -57,6 +57,77 @@ class CoreService {
     }, 10000);
   }
 
+  findBestAndWorstBattle() {
+    const allBattles = Object.entries(this.BattleStats).map(([arenaId, battle]) => ({
+      id: arenaId,
+      ...battle
+    }));
+    
+    if (!allBattles || allBattles.length === 0) {
+      return { bestBattle: null, worstBattle: null };
+    }
+
+    // Фільтруємо тільки завершені бої (не "в бою")
+    const completedBattles = allBattles.filter(battle => battle.win !== -1);
+    
+    if (completedBattles.length === 0) {
+      return { bestBattle: null, worstBattle: null };
+    }
+
+    try {
+      // Знаходимо найгірший і найкращий бій за загальними очками
+      let worstBattle = completedBattles[0];
+      let bestBattle = completedBattles[0];
+      let worstBattlePoints = this.calculateBattlePoints(worstBattle);
+      let bestBattlePoints = worstBattlePoints;
+
+      completedBattles.forEach(battle => {
+        try {
+          const battlePoints = this.calculateBattlePoints(battle);
+          
+          // Перевіряємо, чи очки менші за поточного найгіршого бою
+          if (battlePoints < worstBattlePoints) {
+            worstBattle = battle;
+            worstBattlePoints = battlePoints;
+          }
+          
+          // Перевіряємо, чи очки більші за поточного найкращого бою
+          if (battlePoints > bestBattlePoints) {
+            bestBattle = battle;
+            bestBattlePoints = battlePoints;
+          }
+        } catch (error) {
+          console.error('Помилка при обчисленні даних бою:', error, battle);
+        }
+      });
+
+      return { 
+        bestBattle: { battle: bestBattle, points: bestBattlePoints },
+        worstBattle: { battle: worstBattle, points: worstBattlePoints }
+      };
+    } catch (error) {
+      console.error('Помилка при пошуку найгіршого/найкращого бою:', error);
+      return { bestBattle: null, worstBattle: null };
+    }
+  }
+
+  // Допоміжна функція для обчислення загальних очків за бій
+  calculateBattlePoints(battle) {
+    let battlePoints = 0;
+    
+    if (battle.win === 1) {
+      battlePoints += GAME_POINTS.POINTS_PER_TEAM_WIN;
+    }
+
+    if (battle && battle.players) {
+      Object.values(battle.players).forEach(player => {
+        battlePoints += player.points || 0;
+      });
+    }
+
+    return battlePoints;
+  }
+
   setupWebSocket() {
     const accessKey = this.getAccessKey();
     if (!accessKey || !this.curentPlayerId) return;
@@ -101,7 +172,7 @@ class CoreService {
     this.ws.onclose = () => {
         // console.log('WebSocket з'єднання закрито');
     };
-}
+  }
 
   sleep(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
@@ -673,15 +744,6 @@ class CoreService {
     this.saveState();
     this.getRandomDelay(); // тест
     this.serverData();
-
-    // this.serverDataSave();
-
-    // if (arenaId === this.curentArenaId) {
-    //   this.sleep(1500);
-    //   this.serverDataLoadOtherPlayers();
-    //   //this.serverDataLoad();
-    // }
-    
   }
 
   cleanup() {
