@@ -223,6 +223,8 @@ class CoreService {
   }
 
   initializeBattleStats(arenaId, playerId) {
+    console.log("Ініціалізуємо дані бою:", { arenaId, playerId });
+    
     if (!this.BattleStats[arenaId]) {
       this.BattleStats[arenaId] = {
         startTime: Date.now(),
@@ -242,6 +244,8 @@ class CoreService {
         vehicle: this.curentVehicle || 'Unknown Vehicle'
       };
     }
+    
+    console.log("Дані бою після ініціалізації:", this.BattleStats[arenaId]);
   }
 
   getPlayer(id) {
@@ -415,6 +419,11 @@ class CoreService {
       }
   
       if (data.BattleStats) {
+        // Зберігаємо поточні дані бою
+        const currentBattleData = this.curentArenaId && this.BattleStats[this.curentArenaId] 
+          ? JSON.parse(JSON.stringify(this.BattleStats[this.curentArenaId])) 
+          : null;
+          
         Object.entries(data.BattleStats).forEach(([battleId, newBattleData]) => {
           const existingBattle = this.BattleStats[battleId];
   
@@ -441,22 +450,22 @@ class CoreService {
                 };
               } else {
                 this.BattleStats[battleId].players[playerId] = newPlayerData;
-              
               }
             });
           } else {
-
             this.BattleStats[battleId] = newBattleData;
           }
         });
 
+        // Відновлюємо поточні дані бою
+        if (currentBattleData && this.curentArenaId) {
+          this.BattleStats[this.curentArenaId] = currentBattleData;
+          console.log("Відновлено поточні дані бою:", this.BattleStats[this.curentArenaId]);
+        }
+
         if (data.PlayerInfo) {
           Object.entries(data.PlayerInfo).forEach(([playerId, playerName]) => {
-            if (this.PlayersInfo.hasOwnProperty(playerId)) {
-              this.PlayersInfo[playerId] = playerName;
-            } else {
-              this.PlayersInfo[playerId] = playerName;
-            }
+            this.PlayersInfo[playerId] = playerName;
           });
         }
   
@@ -553,9 +562,21 @@ class CoreService {
 
   serverData() {
     try {
+      // Зберігаємо поточні дані бою
+      const currentBattleData = this.curentArenaId && this.BattleStats[this.curentArenaId] 
+        ? JSON.parse(JSON.stringify(this.BattleStats[this.curentArenaId])) 
+        : null;
+      
+      // Зберігаємо дані на сервер і завантажуємо дані інших гравців
       this.saveToServer();
       this.sleep(250);
       this.loadFromServerOtherPlayers();
+      
+      // Відновлюємо поточні дані бою
+      if (currentBattleData && this.curentArenaId) {
+        this.BattleStats[this.curentArenaId] = currentBattleData;
+      }
+      
       this.sleep(50);
       this.eventsCore.emit('statsUpdated');
       this.saveState();
@@ -594,6 +615,7 @@ class CoreService {
     if (!arenaData) return;
 
     this.curentArenaId = this.sdk?.data?.battle?.arenaId?.value ?? null;
+    console.log("Встановлено поточну арену:", this.curentArenaId);
 
     if (this.curentArenaId == null) return;
     if (this.curentPlayerId == null) return;
@@ -605,18 +627,16 @@ class CoreService {
     this.BattleStats[this.curentArenaId].players[this.curentPlayerId].name = this.sdk.data.player.name.value;
 
     this.serverData();
-
   }
 
   handleOnAnyDamage(onDamageData) {
     if (!onDamageData || !this.curentArenaId || !this.sdk.data.player.id.value) return;
 
-
+    console.log("Отримано дані про пошкодження:", onDamageData);
     const playersID = this.getPlayersIds();
 
     for (const playerId of playersID) {
       if (onDamageData.attacker.playerId === parseInt(playerId) && parseInt(playerId) !== this.sdk.data.player.id.value) {
-
         this.serverDataLoadOtherPlayers();
         break;
       }
@@ -626,6 +646,8 @@ class CoreService {
 
   handlePlayerFeedback(feedback) {
     if (!feedback || !feedback.type) return;
+
+    console.log("Отримано зворотній зв'язок гравця:", feedback);
 
     if (feedback.type === 'damage') {
       this.handlePlayerDamage(feedback.data);
@@ -639,9 +661,7 @@ class CoreService {
       this.handlePlayerTanking(feedback.data);
     } else if (feedback.type === 'receivedDamage') {
       this.handlePlayerReceivedDamage(feedback.data);
-    } // else if (feedback.type === 'targetVisibility') {
-    //   this.handlePlayerTargetVisibility(feedback.data);
-    // }
+    }
   }
 
 
@@ -651,9 +671,24 @@ class CoreService {
     const arenaId = this.curentArenaId;
     const playerId = this.curentPlayerId;
 
+    console.log("Оброблюємо шкоду гравця:", { 
+      arenaId, 
+      playerId, 
+      damage: damageData.damage, 
+      points: damageData.damage * GAME_POINTS.POINTS_PER_DAMAGE 
+    });
+
+    // Ініціалізуємо дані гравця, якщо вони ще не ініціалізовані
+    this.initializeBattleStats(arenaId, playerId);
+
+    // Оновлюємо статистику
     this.BattleStats[arenaId].players[playerId].damage += damageData.damage;
     this.BattleStats[arenaId].players[playerId].points += damageData.damage * GAME_POINTS.POINTS_PER_DAMAGE;
 
+    // Спочатку оновлюємо UI
+    this.eventsCore.emit('statsUpdated');
+    
+    // Потім синхронізуємо з сервером
     this.serverData();
   }
 
@@ -663,43 +698,43 @@ class CoreService {
     const arenaId = this.curentArenaId;
     const playerId = this.curentPlayerId;
 
+    console.log("Оброблюємо вбивство гравця:", { 
+      arenaId, 
+      playerId, 
+      points: GAME_POINTS.POINTS_PER_FRAG 
+    });
+
+    // Ініціалізуємо дані гравця, якщо вони ще не ініціалізовані
+    this.initializeBattleStats(arenaId, playerId);
+
+    // Оновлюємо статистику
     this.BattleStats[arenaId].players[playerId].kills += 1;
     this.BattleStats[arenaId].players[playerId].points += GAME_POINTS.POINTS_PER_FRAG;
 
+    // Спочатку оновлюємо UI
+    this.eventsCore.emit('statsUpdated');
+    
+    // Потім синхронізуємо з сервером
     this.serverData();
   }
 
   handlePlayerRadioAssist(radioAssist) {
     if (!radioAssist || !this.curentArenaId || !this.curentPlayerId) return;
-
     this.serverDataLoadOtherPlayers();
-
   }
 
   handlePlayerTrackAssist(trackAssist) {
     if (!trackAssist || !this.curentArenaId || !this.curentPlayerId) return;
-
     this.serverDataLoadOtherPlayers();
-
   }
 
   handlePlayerTanking(tanking) {
     if (!tanking || !this.curentArenaId || !this.curentPlayerId) return;
-
     this.serverDataLoadOtherPlayers();
-
   }
 
   handlePlayerReceivedDamage(receivedDamage) {
     if (!receivedDamage || !this.curentArenaId || !this.curentPlayerId) return;
-
-    this.serverDataLoadOtherPlayers();
-
-  }
-
-  // тестова фігня
-  handlePlayerTargetVisibility(targetVisibility) {
-    if (!this.curentArenaId || !this.curentPlayerId) return;
     this.serverDataLoadOtherPlayers();
   }
 
@@ -712,12 +747,13 @@ class CoreService {
     const arenaId = result.arenaUniqueID;
     if (!arenaId) return;
 
+    console.log("Отримано результат бою:", { arenaId });
+
     this.curentPlayerId = result.personal.avatar.accountDBID;
     this.BattleStats[arenaId].duration = result.common.duration;
 
     const playerTeam = Number(result.players[this.curentPlayerId].team);
     const winnerTeam = Number(result.common.winnerTeam);
-
 
     if (playerTeam !== undefined && playerTeam !== 0 && winnerTeam !== undefined) {
       if (playerTeam === winnerTeam) {
@@ -741,9 +777,16 @@ class CoreService {
         }
       }
     }
+    
     this.warmupServer();
+    
+    // Зберігаємо стан локально
     this.saveState();
-    this.getRandomDelay(); // тест
+    
+    // Оновлюємо UI перед відправкою на сервер
+    this.eventsCore.emit('statsUpdated');
+    
+    // Потім синхронізуємо з сервером
     this.serverData();
   }
 
