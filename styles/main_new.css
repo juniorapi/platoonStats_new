@@ -133,7 +133,7 @@ body {
 /* Блок статистики внизу */
 .summary-stats {
   display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
+  grid-template-columns: auto auto auto;
   gap: 6px;
   padding: 6px;
   margin-top: 5px;
@@ -147,6 +147,17 @@ body {
   color: #fff;
   text-align: left;
   white-space: nowrap;
+}
+
+.frags-label {
+  color: #fff;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.frags-label span {
+  color: #00a8ff;
+  font-weight: 500;
 }
 
 .summary-label {
