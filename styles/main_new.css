@@ -160,9 +160,18 @@ body {
 
 .battle-stats {
   display: flex;
+  flex-direction: column;
   justify-content: center;
   align-items: center;
   white-space: nowrap;
+}
+
+.best-row {
+  margin-bottom: 2px;
+}
+
+.worst-row {
+  margin-top: 2px;
 }
 
 .best-battle-value {
@@ -173,11 +182,6 @@ body {
 .worst-battle-value {
   color: #ff3333;
   font-weight: 500;
-}
-
-.stats-separator {
-  margin: 0 5px;
-  color: #aaa;
 }
 
 .frags-label {
