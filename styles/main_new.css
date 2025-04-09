@@ -133,7 +133,7 @@ body {
 /* Блок статистики внизу */
 .summary-stats {
   display: grid;
-  grid-template-columns: auto auto auto;
+  grid-template-columns: auto auto auto auto;
   gap: 6px;
   padding: 6px;
   margin-top: 5px;
@@ -156,6 +156,28 @@ body {
 
 .battle-label span {
   font-weight: 500;
+}
+
+.battle-stats {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  white-space: nowrap;
+}
+
+.best-battle-value {
+  color: #00ff00;
+  font-weight: 500;
+}
+
+.worst-battle-value {
+  color: #ff3333;
+  font-weight: 500;
+}
+
+.stats-separator {
+  margin: 0 5px;
+  color: #aaa;
 }
 
 .frags-label {
