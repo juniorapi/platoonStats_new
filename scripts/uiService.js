@@ -91,6 +91,13 @@ class UIService {
     const teamStats = this.core.calculateTeamData();
     document.getElementById('team-damage').textContent = teamStats.teamDamage.toLocaleString();
     document.getElementById('team-frags').textContent = teamStats.teamKills.toLocaleString();
+    
+    // Оновлення загальних фрагів на сторінці
+    const totalFragsElement = document.getElementById('total-frags');
+    if (totalFragsElement) {
+      totalFragsElement.textContent = teamStats.teamKills.toLocaleString();
+    }
+    
     document.getElementById('battles-count').textContent =
       `${teamStats.wins}/${teamStats.battles}`;
     document.getElementById('team-points').textContent = teamStats.teamPoints.toLocaleString();
