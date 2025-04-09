@@ -160,6 +160,20 @@ body {
   font-weight: 500;
 }
 
+.points-column {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+}
+
+.points-label {
+  color: #fff;
+  font-size: 10px;
+  text-align: right;
+  text-transform: uppercase;
+  font-weight: bold;
+}
+
 .summary-label {
   color: #fff;
   text-align: center;
