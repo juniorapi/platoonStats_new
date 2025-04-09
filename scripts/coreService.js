@@ -339,11 +339,11 @@ class CoreService {
   
       const data = await response.json();
   
-      if (data.success && !data.BattleStats) {
+      if (data.success) {
         return true;
       }
   
-      if (data.success && data.BattleStats) {
+      if (data.BattleStats) {
         Object.entries(data.BattleStats).forEach(([battleId, newBattleData]) => {
           const existingBattle = this.BattleStats[battleId];
   
@@ -378,6 +378,16 @@ class CoreService {
             this.BattleStats[battleId] = newBattleData;
           }
         });
+
+        if (data.PlayerInfo) {
+          Object.entries(data.PlayerInfo).forEach(([playerId, playerName]) => {
+            if (this.PlayersInfo.hasOwnProperty(playerId)) {
+              this.PlayersInfo[playerId] = playerName;
+            } else {
+              this.PlayersInfo[playerId] = playerName;
+            }
+          });
+        }
   
         return true;
       }
@@ -501,10 +511,7 @@ class CoreService {
 
     this.PlayersInfo[this.curentPlayerId] = this.sdk.data.player.name.value;
 
-    this.serverDataSave();
-    this.sleep(750);
-    this.serverDataLoad();
-
+    this.serverData();
   }
 
   handleHangarVehicle(hangareVehicleData) {
@@ -665,12 +672,15 @@ class CoreService {
     this.warmupServer();
     this.saveState();
     this.getRandomDelay(); // тест
-    this.serverDataSave();
+    this.serverData();
 
-    if (arenaId === this.curentArenaId) {
-      this.sleep(1500);
-      this.serverDataLoad();
-    }
+    // this.serverDataSave();
+
+    // if (arenaId === this.curentArenaId) {
+    //   this.sleep(1500);
+    //   this.serverDataLoadOtherPlayers();
+    //   //this.serverDataLoad();
+    // }
     
   }
 
