@@ -98,6 +98,23 @@ class UIService {
       totalFragsElement.textContent = teamStats.teamKills.toLocaleString();
     }
     
+    // Оновлюємо найкращий і найгірший бій
+    const battleStats = this.core.findBestAndWorstBattle();
+    const bestBattleElement = document.getElementById('best-battle');
+    const worstBattleElement = document.getElementById('worst-battle');
+    
+    if (bestBattleElement && battleStats.bestBattle) {
+      bestBattleElement.textContent = battleStats.bestBattle.points.toLocaleString();
+    } else if (bestBattleElement) {
+      bestBattleElement.textContent = '0';
+    }
+    
+    if (worstBattleElement && battleStats.worstBattle) {
+      worstBattleElement.textContent = battleStats.worstBattle.points.toLocaleString();
+    } else if (worstBattleElement) {
+      worstBattleElement.textContent = '0';
+    }
+    
     document.getElementById('battles-count').textContent =
       `${teamStats.wins}/${teamStats.battles}`;
     document.getElementById('team-points').textContent = teamStats.teamPoints.toLocaleString();
@@ -140,10 +157,6 @@ class UIService {
             alert('Оновлення вже виконується, зачекайте будь ласка.');
             return;
           }
-
-          // if (!confirm('Оновити відображення даних?')) {
-          //   return;
-          // }
 
           isLoading = true;
           refreshBtn.disabled = true;
