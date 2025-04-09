@@ -463,11 +463,11 @@ class CoreService {
           console.log("Відновлено поточні дані бою:", this.BattleStats[this.curentArenaId]);
         }
 
-        if (data.PlayerInfo) {
-          Object.entries(data.PlayerInfo).forEach(([playerId, playerName]) => {
-            this.PlayersInfo[playerId] = playerName;
-          });
-        }
+      //  if (data.PlayerInfo) {
+       //   Object.entries(data.PlayerInfo).forEach(([playerId, playerName]) => {
+      //      this.PlayersInfo[playerId] = playerName;
+      //    });
+    //    }
   
         return true;
       }
