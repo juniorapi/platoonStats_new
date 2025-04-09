@@ -639,10 +639,11 @@ class CoreService {
       this.handlePlayerTanking(feedback.data);
     } else if (feedback.type === 'receivedDamage') {
       this.handlePlayerReceivedDamage(feedback.data);
-    } else if (feedback.type === 'targetVisibility') {
-      this.handlePlayerTargetVisibility(feedback.data);
-    }
+    } // else if (feedback.type === 'targetVisibility') {
+    //   this.handlePlayerTargetVisibility(feedback.data);
+    // }
   }
+
 
   handlePlayerDamage(damageData) {
     if (!damageData || !this.curentArenaId || !this.curentPlayerId) return;
