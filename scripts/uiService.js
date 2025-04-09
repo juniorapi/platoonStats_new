@@ -44,63 +44,51 @@ class UIService {
   }
 
   createPlayerRow(playerId, style) {
-    const playerRow = document.createElement('div');
-    playerRow.className = 'player-row';
-    if (style) playerRow.style = style;
+  const playerRow = document.createElement('div');
+  playerRow.className = 'player-row';
+  if (style) playerRow.style = style;
 
-    const playerName = this.core.PlayersInfo[playerId];
-    const arenaId = this.core.curentArenaId;
-    const cleanName = this.formatPlayerName(playerName);
-    const displayName = this.truncateName(cleanName);
+  const playerName = this.core.PlayersInfo[playerId];
+  const arenaId = this.core.curentArenaId;
+  const cleanName = this.formatPlayerName(playerName);
+  const displayName = this.truncateName(cleanName);
 
-    // Виводимо діагностичне повідомлення для перевірки даних
-    console.log("Створюємо рядок гравця:", {
-      playerId: playerId,
-      playerName: playerName,
-      currentArenaId: arenaId,
-      battleStats: arenaId && this.core.BattleStats[arenaId] ? this.core.BattleStats[arenaId] : null
-    });
+  let battleDamage = 0;
+  let battleKills = 0;
 
-    let battleDamage = 0;
-    let battleKills = 0;
-
-    if (arenaId && this.core.BattleStats[arenaId] &&
-      this.core.BattleStats[arenaId].players &&
-      this.core.BattleStats[arenaId].players[playerId]) {
-      battleDamage = this.core.BattleStats[arenaId].players[playerId].damage || 0;
-      battleKills = this.core.BattleStats[arenaId].players[playerId].kills || 0;
-      
-      // Виводимо діагностичне повідомлення про поточні дані бою
-      console.log(`Дані бою для ${playerName}:`, {
-        damage: battleDamage,
-        kills: battleKills
-      });
-    }
-
-    const totalPlayerData = this.core.calculatePlayerData(playerId);
-    const displayDamage = totalPlayerData.playerDamage;
-    const displayKills = totalPlayerData.playerKills;
-    const playerPoints = totalPlayerData.playerPoints;
-
-    playerRow.innerHTML = `
-      <div class="player-name" title="${cleanName}">${displayName}</div>
-      <div class="stat-column">
-        <div class="damage">${displayDamage.toLocaleString()}</div>
-        <div class="damage-in-battle" style="font-size: 9px; color: #ff6a00;">+${battleDamage.toLocaleString()}</div>
-      </div>
-      <div class="stat-column">
-        <div class="frags">${displayKills}</div>
-        <div class="frags-in-battle" style="font-size: 9px; color: #00a8ff;">+${battleKills}</div>
-      </div>
-    `;
-
-    return playerRow;
+  if (arenaId && this.core.BattleStats[arenaId] &&
+    this.core.BattleStats[arenaId].players &&
+    this.core.BattleStats[arenaId].players[playerId]) {
+    battleDamage = this.core.BattleStats[arenaId].players[playerId].damage || 0;
+    battleKills = this.core.BattleStats[arenaId].players[playerId].kills || 0;
   }
+
+  const totalPlayerData = this.core.calculatePlayerData(playerId);
+  const displayDamage = totalPlayerData.playerDamage;
+  const displayKills = totalPlayerData.playerKills;
+  const playerPoints = totalPlayerData.playerPoints;
+
+  playerRow.innerHTML = `
+    <div class="player-name" title="${cleanName}">${displayName}</div>
+    <div class="stat-column">
+      <div class="damage">${displayDamage.toLocaleString()}</div>
+      <div class="damage-in-battle" style="font-size: 9px; color: #ff6a00;">+${battleDamage.toLocaleString()}</div>
+    </div>
+    <div class="stat-column">
+      <div class="frags">${displayKills}</div>
+      <div class="frags-in-battle" style="font-size: 9px; color: #00a8ff;">+${battleKills}</div>
+    </div>
+    <!-- Прихований стовпчик з очками -->
+    <div class="stat-column" style="display:none">
+      <div class="points">${playerPoints.toLocaleString()}</div>
+    </div>
+  `;
+
+  return playerRow;
+}
 
   updateTeamStatsUI() {
     const teamStats = this.core.calculateTeamData();
-    
-    // Елементи для загальної статистики
     document.getElementById('team-damage').textContent = teamStats.teamDamage.toLocaleString();
     document.getElementById('team-frags').textContent = teamStats.teamKills.toLocaleString();
     
@@ -127,8 +115,8 @@ class UIService {
       worstBattleElement.textContent = '0';
     }
     
-    // Оновлюємо кількість боїв та очки
-    document.getElementById('battles-count').textContent = `${teamStats.wins}/${teamStats.battles}`;
+    document.getElementById('battles-count').textContent =
+      `${teamStats.wins}/${teamStats.battles}`;
     document.getElementById('team-points').textContent = teamStats.teamPoints.toLocaleString();
   }
 
@@ -158,6 +146,7 @@ class UIService {
   }
 
   setupEventListeners() {
+
     const refreshBtn = document.getElementById('refresh-btn');
     if (refreshBtn) {
       let isLoading = false;
@@ -191,7 +180,7 @@ class UIService {
         } finally {
           isLoading = false;
           refreshBtn.disabled = false;
-          refreshBtn.textContent = 'Оновити віджет';
+          refreshBtn.textContent = 'Оновити дані';
         }
       });
     }
