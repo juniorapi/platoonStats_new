@@ -7,23 +7,10 @@ class UIService {
     });
 
     this.setupEventListeners();
-    this.lastUpdate = 0;
-    
-    // Додаємо таймер для періодичного оновлення інтерфейсу
-    this.updateTimer = setInterval(() => {
-      // Оновлюємо інтерфейс тільки якщо пройшло достатньо часу з останнього оновлення
-      const now = Date.now();
-      if (now - this.lastUpdate > 10000) { // 10 секунд
-        this.updatePlayersUI();
-        this.lastUpdate = now;
-      }
-    }, 10000);
   }
 
   updatePlayersUI() {
     const container = document.getElementById('player-container');
-    if (!container) return;
-    
     container.innerHTML = '';
 
     const uniquePlayerIds = this.core.getPlayersIds();
@@ -54,71 +41,61 @@ class UIService {
       const playerRow = this.createPlayerRow(playerId, playerRowStyle);
       container.appendChild(playerRow);
     });
-    
-    // Фіксуємо час останнього оновлення
-    this.lastUpdate = Date.now();
   }
 
   createPlayerRow(playerId, style) {
-    const playerRow = document.createElement('div');
-    playerRow.className = 'player-row';
-    if (style) playerRow.style = style;
+  const playerRow = document.createElement('div');
+  playerRow.className = 'player-row';
+  if (style) playerRow.style = style;
 
-    const playerName = this.core.PlayersInfo[playerId];
-    const arenaId = this.core.curentArenaId;
-    const cleanName = this.formatPlayerName(playerName);
-    const displayName = this.truncateName(cleanName);
+  const playerName = this.core.PlayersInfo[playerId];
+  const arenaId = this.core.curentArenaId;
+  const cleanName = this.formatPlayerName(playerName);
+  const displayName = this.truncateName(cleanName);
 
-    let battleDamage = 0;
-    let battleKills = 0;
+  let battleDamage = 0;
+  let battleKills = 0;
 
-    if (arenaId && this.core.BattleStats[arenaId] &&
-      this.core.BattleStats[arenaId].players &&
-      this.core.BattleStats[arenaId].players[playerId]) {
-      battleDamage = this.core.BattleStats[arenaId].players[playerId].damage || 0;
-      battleKills = this.core.BattleStats[arenaId].players[playerId].kills || 0;
-    }
-
-    const totalPlayerData = this.core.calculatePlayerData(playerId);
-    const displayDamage = totalPlayerData.playerDamage;
-    const displayKills = totalPlayerData.playerKills;
-    const playerPoints = totalPlayerData.playerPoints;
-
-    // Додаємо атрибут data-player-id для ідентифікації
-    playerRow.setAttribute('data-player-id', playerId);
-
-    playerRow.innerHTML = `
-      <div class="player-name" title="${cleanName}">${displayName}</div>
-      <div class="stat-column">
-        <div class="damage">+${battleDamage.toLocaleString()}</div>
-        <div class="damage-in-battle" style="font-size: 9px; color: #ff6a00;">${displayDamage.toLocaleString()}</div>
-      </div>
-      <div class="stat-column">
-        <div class="frags">+${battleKills}</div>
-        <div class="frags-in-battle" style="font-size: 9px; color: #00a8ff;">${displayKills}</div>
-      </div>
-      <!-- Стовпчик з очками -->
-      <div class="stat-column">
-        <div class="points">${playerPoints.toLocaleString()}</div>
-      </div>
-    `;
-
-    return playerRow;
+  if (arenaId && this.core.BattleStats[arenaId] &&
+    this.core.BattleStats[arenaId].players &&
+    this.core.BattleStats[arenaId].players[playerId]) {
+    battleDamage = this.core.BattleStats[arenaId].players[playerId].damage || 0;
+    battleKills = this.core.BattleStats[arenaId].players[playerId].kills || 0;
   }
+
+  const totalPlayerData = this.core.calculatePlayerData(playerId);
+  const displayDamage = totalPlayerData.playerDamage;
+  const displayKills = totalPlayerData.playerKills;
+  const playerPoints = totalPlayerData.playerPoints;
+
+  playerRow.innerHTML = `
+    <div class="player-name" title="${cleanName}">${displayName}</div>
+    <div class="stat-column">
+      <div class="damage">${displayDamage.toLocaleString()}</div>
+      <div class="damage-in-battle" style="font-size: 9px; color: #ff6a00;">+${battleDamage.toLocaleString()}</div>
+    </div>
+    <div class="stat-column">
+      <div class="frags">${displayKills}</div>
+      <div class="frags-in-battle" style="font-size: 9px; color: #00a8ff;">+${battleKills}</div>
+    </div>
+    <!-- Прихований стовпчик з очками -->
+    <div class="stat-column" style="display:none">
+      <div class="points">${playerPoints.toLocaleString()}</div>
+    </div>
+  `;
+
+  return playerRow;
+}
 
   updateTeamStatsUI() {
     const teamStats = this.core.calculateTeamData();
-    const totalBattlePoints = this.core.calculateBattleData();
+    document.getElementById('team-damage').textContent = teamStats.teamDamage.toLocaleString();
+    document.getElementById('team-frags').textContent = teamStats.teamKills.toLocaleString();
     
-    // Оновлення загальних даних команди
-    const teamDamageEl = document.getElementById('team-damage');
-    if (teamDamageEl) {
-      teamDamageEl.textContent = teamStats.teamDamage.toLocaleString();
-    }
-    
-    const teamFragsEl = document.getElementById('team-frags');
-    if (teamFragsEl) {
-      teamFragsEl.textContent = teamStats.teamKills.toLocaleString();
+    // Оновлення загальних фрагів на сторінці
+    const totalFragsElement = document.getElementById('total-frags');
+    if (totalFragsElement) {
+      totalFragsElement.textContent = teamStats.teamKills.toLocaleString();
     }
     
     // Оновлюємо найкращий і найгірший бій
@@ -138,32 +115,18 @@ class UIService {
       worstBattleElement.textContent = '0';
     }
     
-    // Оновлюємо лічильник боїв
-    const battlesCountEl = document.getElementById('battles-count');
-    if (battlesCountEl) {
-      battlesCountEl.textContent = `${teamStats.wins}/${teamStats.battles}`;
-    }
-
-    // Оновлюємо очки поточного бою
-    const teamNowPoints = document.getElementById('team-now-points');
-    if (teamNowPoints) {
-      teamNowPoints.textContent = totalBattlePoints.battlePoints.toLocaleString();
-    }
-    
-    // Оновлюємо загальні очки
-    const teamPointsEl = document.getElementById('team-points');
-    if (teamPointsEl) {
-      teamPointsEl.textContent = teamStats.teamPoints.toLocaleString();
-    }
+    document.getElementById('battles-count').textContent =
+      `${teamStats.wins}/${teamStats.battles}`;
+    document.getElementById('team-points').textContent = teamStats.teamPoints.toLocaleString();
   }
 
-  showNotification(message = 'Дані оновлено', type = 'success') {
+  showSaveNotification() {
     const notification = document.createElement('div');
     Object.assign(notification.style, {
       position: 'fixed',
       bottom: '20px',
       right: '20px',
-      backgroundColor: type === 'success' ? 'rgba(46, 204, 113, 0.9)' : 'rgba(231, 76, 60, 0.9)',
+      backgroundColor: 'rgba(46, 204, 113, 0.9)',
       color: 'white',
       padding: '10px 15px',
       borderRadius: '4px',
@@ -172,7 +135,7 @@ class UIService {
       boxShadow: '0 2px 10px rgba(0, 0, 0, 0.2)'
     });
 
-    notification.textContent = message;
+    notification.textContent = 'Бій збережено в історію';
     document.body.appendChild(notification);
 
     setTimeout(() => {
@@ -183,7 +146,7 @@ class UIService {
   }
 
   setupEventListeners() {
-    // Обробник для оновлення віджета
+
     const refreshBtn = document.getElementById('refresh-btn');
     if (refreshBtn) {
       let isLoading = false;
@@ -202,8 +165,6 @@ class UIService {
           await this.core.loadFromServer();
           this.updatePlayersUI();
           this.core.saveState();
-          
-          this.showNotification('Дані успішно оновлено');
 
         } catch (error) {
           console.error('Помилка при оновленні даних:', error);
@@ -219,17 +180,16 @@ class UIService {
         } finally {
           isLoading = false;
           refreshBtn.disabled = false;
-          refreshBtn.textContent = 'Оновити віджет';
+          refreshBtn.textContent = 'Оновити дані';
         }
       });
     }
 
-    // Обробник для видалення історії
-    const removeHistoryBtn = document.getElementById('remove-history-btn');
-    if (removeHistoryBtn) {
+    const restoreBtn = document.getElementById('remove-history-btn');
+    if (restoreBtn) {
       let isDeleting = false;
     
-      removeHistoryBtn.addEventListener('click', async () => {
+      restoreBtn.addEventListener('click', async () => {
         try {
           if (isDeleting) {
             alert('Процес видалення вже виконується, зачекайте будь ласка.');
@@ -244,8 +204,8 @@ class UIService {
           }
     
           isDeleting = true;
-          removeHistoryBtn.disabled = true;
-          removeHistoryBtn.textContent = 'Видалення...';
+          restoreBtn.disabled = true;
+          restoreBtn.textContent = 'Видалення...';
     
           try {
             await this.core.loadFromServer();
@@ -255,10 +215,10 @@ class UIService {
     
           await this.core.clearServerData();
           
-          this.core.clearState();
+          this.core.clearState()
           this.updatePlayersUI();
     
-          this.showNotification('Статистику успішно видалено!');
+          alert('Статистику успішно видалено!');
     
         } catch (error) {
           console.error('Помилка при видаленні статистики:', error);
@@ -275,51 +235,18 @@ class UIService {
     
         } finally {
           isDeleting = false;
-          removeHistoryBtn.disabled = false;
-          removeHistoryBtn.textContent = 'Видалити історію';
+          restoreBtn.disabled = false;
+          restoreBtn.textContent = 'Видалити історію';
         }
       });
     }
 
-    // Обробник для перегляду історії
     const viewHistoryBtn = document.getElementById('view-history-btn');
     if (viewHistoryBtn) {
       const accessKey = this.core.getAccessKey();
       viewHistoryBtn.addEventListener('click', () => {
         window.open('./battle-history/?' + accessKey, '_blank');
       });
-    }
-    
-    // Додаємо кнопку для ручної синхронізації, якщо її немає
-    this.addSyncButton();
-  }
-  
-  // Додавання кнопки синхронізації
-  addSyncButton() {
-    // Перевіряємо, чи вже існує кнопка
-    if (document.getElementById('sync-now-btn')) return;
-    
-    const sideButtonsContainer = document.querySelector('.side-buttons');
-    if (sideButtonsContainer) {
-      const syncBtn = document.createElement('button');
-      syncBtn.id = 'sync-now-btn';
-      syncBtn.textContent = 'Синхронізувати зараз';
-      
-      syncBtn.addEventListener('click', () => {
-        if (this.core.isExistsRecord()) {
-          this.core.serverData();
-          this.showNotification('Синхронізація розпочата...');
-        } else {
-          alert('Немає активних даних для синхронізації.');
-        }
-      });
-      
-      // Додаємо кнопку першою в контейнері
-      if (sideButtonsContainer.firstChild) {
-        sideButtonsContainer.insertBefore(syncBtn, sideButtonsContainer.firstChild);
-      } else {
-        sideButtonsContainer.appendChild(syncBtn);
-      }
     }
   }
 
@@ -331,14 +258,6 @@ class UIService {
   truncateName(name) {
     if (!name) return 'Невідомий';
     return name.length > 16 ? name.substring(0, 16) + '...' : name;
-  }
-  
-  // Очищення ресурсів при закритті віджета
-  cleanup() {
-    if (this.updateTimer) {
-      clearInterval(this.updateTimer);
-      this.updateTimer = null;
-    }
   }
 }
 
