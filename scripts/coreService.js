@@ -409,55 +409,56 @@ class CoreService {
     }
 
     const data = await response.json();
+    console.log('Відповідь сервера:', data); // Для діагностики
 
     if (data.success) {
-      console.log('Метод loadFromServerOtherPlayers виконано успішно, але даних не отримано');
-      return true;
-    }
-
-    if (data.BattleStats) {
-      console.log('Метод loadFromServerOtherPlayers виконано успішно, отримано дані бою');
+      if (!data.BattleStats && !data.PlayerInfo) {
+        console.log('Метод loadFromServerOtherPlayers виконано успішно, але даних не отримано');
+        return true;
+      }
       
-      Object.entries(data.BattleStats).forEach(([battleId, newBattleData]) => {
-        const existingBattle = this.BattleStats[battleId];
+      if (data.BattleStats) {
+        console.log('Метод loadFromServerOtherPlayers виконано успішно, отримано дані бою');
+        
+        Object.entries(data.BattleStats).forEach(([battleId, newBattleData]) => {
+          const existingBattle = this.BattleStats[battleId];
 
-        if (existingBattle) {
-          this.BattleStats[battleId] = {
-            ...existingBattle,
-            startTime: newBattleData.startTime,
-            duration: newBattleData.duration,
-            win: newBattleData.win,
-            mapName: newBattleData.mapName,
-            players: { ...existingBattle.players }
-          };
+          if (existingBattle) {
+            this.BattleStats[battleId] = {
+              ...existingBattle,
+              startTime: newBattleData.startTime,
+              duration: newBattleData.duration,
+              win: newBattleData.win,
+              mapName: newBattleData.mapName,
+              players: { ...existingBattle.players }
+            };
 
-          Object.entries(newBattleData.players).forEach(([playerId, newPlayerData]) => {
-            const existingPlayer = existingBattle.players[playerId];
+            Object.entries(newBattleData.players).forEach(([playerId, newPlayerData]) => {
+              const existingPlayer = existingBattle.players[playerId];
 
-            if (existingPlayer) {
-              this.BattleStats[battleId].players[playerId] = {
-                name: newPlayerData.name, 
-                vehicle: newPlayerData.vehicle,
-                damage: Math.max(existingPlayer.damage || 0, newPlayerData.damage || 0),
-                kills: Math.max(existingPlayer.kills || 0, newPlayerData.kills || 0),
-                points: Math.max(existingPlayer.points || 0, newPlayerData.points || 0)
-              };
-            } else {
-              this.BattleStats[battleId].players[playerId] = newPlayerData;
-            }
-          });
-        } else {
-          this.BattleStats[battleId] = newBattleData;
-        }
-      });
+              if (existingPlayer) {
+                this.BattleStats[battleId].players[playerId] = {
+                  name: newPlayerData.name, 
+                  vehicle: newPlayerData.vehicle,
+                  damage: Math.max(existingPlayer.damage || 0, newPlayerData.damage || 0),
+                  kills: Math.max(existingPlayer.kills || 0, newPlayerData.kills || 0),
+                  points: Math.max(existingPlayer.points || 0, newPlayerData.points || 0)
+                };
+              } else {
+                this.BattleStats[battleId].players[playerId] = newPlayerData;
+              }
+            });
+          } else {
+            this.BattleStats[battleId] = newBattleData;
+          }
+        });
+      }
 
       if (data.PlayerInfo) {
         console.log('Метод loadFromServerOtherPlayers виконано успішно, отримано дані гравців');
         
         Object.entries(data.PlayerInfo).forEach(([playerId, playerName]) => {
-          if (this.PlayersInfo.hasOwnProperty(playerId)) {
-            this.PlayersInfo[playerId] = playerName;
-          } else {
+          if (!this.PlayersInfo[playerId]) {
             this.PlayersInfo[playerId] = playerName;
           }
         });
@@ -466,13 +467,13 @@ class CoreService {
       return true;
     }
 
+    console.log('Метод loadFromServerOtherPlayers не успішний');
     return false;
   } catch (error) {
     console.error('Помилка при завантаженні даних із сервера:', error);
     throw error;
   }
 }
-  
 
   async clearServerData() {
     try {
