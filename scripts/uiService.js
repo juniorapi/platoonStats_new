@@ -7,15 +7,23 @@ class UIService {
     });
 
     this.setupEventListeners();
+    this.lastUpdate = 0;
     
     // Додаємо таймер для періодичного оновлення інтерфейсу
     this.updateTimer = setInterval(() => {
-      this.updatePlayersUI();
-    }, 10000); // Оновлюємо інтерфейс кожні 10 секунд
+      // Оновлюємо інтерфейс тільки якщо пройшло достатньо часу з останнього оновлення
+      const now = Date.now();
+      if (now - this.lastUpdate > 10000) { // 10 секунд
+        this.updatePlayersUI();
+        this.lastUpdate = now;
+      }
+    }, 10000);
   }
 
   updatePlayersUI() {
     const container = document.getElementById('player-container');
+    if (!container) return;
+    
     container.innerHTML = '';
 
     const uniquePlayerIds = this.core.getPlayersIds();
@@ -46,6 +54,9 @@ class UIService {
       const playerRow = this.createPlayerRow(playerId, playerRowStyle);
       container.appendChild(playerRow);
     });
+    
+    // Фіксуємо час останнього оновлення
+    this.lastUpdate = Date.now();
   }
 
   createPlayerRow(playerId, style) {
@@ -73,7 +84,7 @@ class UIService {
     const displayKills = totalPlayerData.playerKills;
     const playerPoints = totalPlayerData.playerPoints;
 
-    // Додаємо атрибут data-player-id для ідентифікації рядків гравців
+    // Додаємо атрибут data-player-id для ідентифікації
     playerRow.setAttribute('data-player-id', playerId);
 
     playerRow.innerHTML = `
@@ -86,8 +97,8 @@ class UIService {
         <div class="frags">+${battleKills}</div>
         <div class="frags-in-battle" style="font-size: 9px; color: #00a8ff;">${displayKills}</div>
       </div>
-      <!-- Прихований стовпчик з очками -->
-      <div class="stat-column" style="display:none">
+      <!-- Стовпчик з очками -->
+      <div class="stat-column">
         <div class="points">${playerPoints.toLocaleString()}</div>
       </div>
     `;
@@ -99,9 +110,16 @@ class UIService {
     const teamStats = this.core.calculateTeamData();
     const totalBattlePoints = this.core.calculateBattleData();
     
-    // Оновлення загальних фрагів на сторінці
-    document.getElementById('team-damage').textContent = teamStats.teamDamage.toLocaleString();
-    document.getElementById('team-frags').textContent = teamStats.teamKills.toLocaleString();
+    // Оновлення загальних даних команди
+    const teamDamageEl = document.getElementById('team-damage');
+    if (teamDamageEl) {
+      teamDamageEl.textContent = teamStats.teamDamage.toLocaleString();
+    }
+    
+    const teamFragsEl = document.getElementById('team-frags');
+    if (teamFragsEl) {
+      teamFragsEl.textContent = teamStats.teamKills.toLocaleString();
+    }
     
     // Оновлюємо найкращий і найгірший бій
     const battleStats = this.core.findBestAndWorstBattle();
@@ -120,25 +138,32 @@ class UIService {
       worstBattleElement.textContent = '0';
     }
     
-    document.getElementById('battles-count').textContent =
-      `${teamStats.wins}/${teamStats.battles}`;
+    // Оновлюємо лічильник боїв
+    const battlesCountEl = document.getElementById('battles-count');
+    if (battlesCountEl) {
+      battlesCountEl.textContent = `${teamStats.wins}/${teamStats.battles}`;
+    }
 
-    // Перевіряємо, чи є елемент team-now-points
+    // Оновлюємо очки поточного бою
     const teamNowPoints = document.getElementById('team-now-points');
     if (teamNowPoints) {
       teamNowPoints.textContent = totalBattlePoints.battlePoints.toLocaleString();
     }
     
-    document.getElementById('team-points').textContent = teamStats.teamPoints.toLocaleString();
+    // Оновлюємо загальні очки
+    const teamPointsEl = document.getElementById('team-points');
+    if (teamPointsEl) {
+      teamPointsEl.textContent = teamStats.teamPoints.toLocaleString();
+    }
   }
 
-  showSaveNotification(message = 'Дані оновлено') {
+  showNotification(message = 'Дані оновлено', type = 'success') {
     const notification = document.createElement('div');
     Object.assign(notification.style, {
       position: 'fixed',
       bottom: '20px',
       right: '20px',
-      backgroundColor: 'rgba(46, 204, 113, 0.9)',
+      backgroundColor: type === 'success' ? 'rgba(46, 204, 113, 0.9)' : 'rgba(231, 76, 60, 0.9)',
       color: 'white',
       padding: '10px 15px',
       borderRadius: '4px',
@@ -158,6 +183,7 @@ class UIService {
   }
 
   setupEventListeners() {
+    // Обробник для оновлення віджета
     const refreshBtn = document.getElementById('refresh-btn');
     if (refreshBtn) {
       let isLoading = false;
@@ -177,8 +203,7 @@ class UIService {
           this.updatePlayersUI();
           this.core.saveState();
           
-          // Додаємо повідомлення про успішне оновлення
-          this.showSaveNotification('Дані успішно оновлено');
+          this.showNotification('Дані успішно оновлено');
 
         } catch (error) {
           console.error('Помилка при оновленні даних:', error);
@@ -199,11 +224,12 @@ class UIService {
       });
     }
 
-    const restoreBtn = document.getElementById('remove-history-btn');
-    if (restoreBtn) {
+    // Обробник для видалення історії
+    const removeHistoryBtn = document.getElementById('remove-history-btn');
+    if (removeHistoryBtn) {
       let isDeleting = false;
     
-      restoreBtn.addEventListener('click', async () => {
+      removeHistoryBtn.addEventListener('click', async () => {
         try {
           if (isDeleting) {
             alert('Процес видалення вже виконується, зачекайте будь ласка.');
@@ -218,8 +244,8 @@ class UIService {
           }
     
           isDeleting = true;
-          restoreBtn.disabled = true;
-          restoreBtn.textContent = 'Видалення...';
+          removeHistoryBtn.disabled = true;
+          removeHistoryBtn.textContent = 'Видалення...';
     
           try {
             await this.core.loadFromServer();
@@ -232,7 +258,7 @@ class UIService {
           this.core.clearState();
           this.updatePlayersUI();
     
-          alert('Статистику успішно видалено!');
+          this.showNotification('Статистику успішно видалено!');
     
         } catch (error) {
           console.error('Помилка при видаленні статистики:', error);
@@ -249,12 +275,13 @@ class UIService {
     
         } finally {
           isDeleting = false;
-          restoreBtn.disabled = false;
-          restoreBtn.textContent = 'Видалити історію';
+          removeHistoryBtn.disabled = false;
+          removeHistoryBtn.textContent = 'Видалити історію';
         }
       });
     }
 
+    // Обробник для перегляду історії
     const viewHistoryBtn = document.getElementById('view-history-btn');
     if (viewHistoryBtn) {
       const accessKey = this.core.getAccessKey();
@@ -263,25 +290,15 @@ class UIService {
       });
     }
     
-    // Додаємо кнопку для ручної синхронізації
-    const syncNowBtn = document.getElementById('sync-now-btn');
-    if (syncNowBtn) {
-      syncNowBtn.addEventListener('click', () => {
-        if (this.core.isExistsRecord()) {
-          this.core.serverData();
-          this.showSaveNotification('Синхронізація розпочата...');
-        } else {
-          alert('Немає активних даних для синхронізації.');
-        }
-      });
-    } else {
-      // Якщо кнопки немає, створюємо її
-      this.addSyncButton();
-    }
+    // Додаємо кнопку для ручної синхронізації, якщо її немає
+    this.addSyncButton();
   }
   
-  // Метод для додавання кнопки синхронізації, якщо її немає в HTML
+  // Додавання кнопки синхронізації
   addSyncButton() {
+    // Перевіряємо, чи вже існує кнопка
+    if (document.getElementById('sync-now-btn')) return;
+    
     const sideButtonsContainer = document.querySelector('.side-buttons');
     if (sideButtonsContainer) {
       const syncBtn = document.createElement('button');
@@ -291,7 +308,7 @@ class UIService {
       syncBtn.addEventListener('click', () => {
         if (this.core.isExistsRecord()) {
           this.core.serverData();
-          this.showSaveNotification('Синхронізація розпочата...');
+          this.showNotification('Синхронізація розпочата...');
         } else {
           alert('Немає активних даних для синхронізації.');
         }
@@ -316,7 +333,7 @@ class UIService {
     return name.length > 16 ? name.substring(0, 16) + '...' : name;
   }
   
-  // Метод для очищення при видаленні
+  // Очищення ресурсів при закритті віджета
   cleanup() {
     if (this.updateTimer) {
       clearInterval(this.updateTimer);
