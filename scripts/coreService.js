@@ -1,4 +1,3 @@
-// Оновлений coreService.js
 import EventEmitter from '../battle-history/scripts/eventEmitter.js';
 import { GAME_POINTS, STATS } from '../battle-history/scripts/constants.js';
 
@@ -29,11 +28,16 @@ class CoreService {
       this.isInPlatoon = false;
     }
 
-    // Додаємо лічильник для регулярної синхронізації
-    this.syncCounter = 0;
+    // Налаштування для синхронізації
     this.syncInterval = null;
     this.lastSyncTime = 0;
-    this.minSyncInterval = 15000; // Мінімальний інтервал синхронізації - 15 секунд
+    this.minSyncInterval = 15000; // 15 секунд мінімальний час між синхронізаціями
+
+    // Для відстеження уже облікованої шкоди та фрагів
+    this.processedEvents = {
+      damage: {},
+      kills: {}
+    };
 
     this.setupSDKListeners();
     this.eventsCore = new EventEmitter();
@@ -41,7 +45,7 @@ class CoreService {
     this.startSyncTimer(); // Запускаємо таймер регулярної синхронізації
   }
 
-  // Новий метод для запуску регулярної синхронізації
+  // Запуск регулярної синхронізації
   startSyncTimer() {
     if (this.syncInterval) {
       clearInterval(this.syncInterval);
@@ -49,10 +53,9 @@ class CoreService {
     
     // Запускаємо синхронізацію кожні 30 секунд
     this.syncInterval = setInterval(() => {
-      this.syncCounter++;
-      console.log(`Регулярна синхронізація #${this.syncCounter}`);
+      console.log('Регулярна синхронізація');
       
-      if (this.isExistsRecord() && this.isInPlatoon) {
+      if (this.isExistsRecord()) {
         const now = Date.now();
         if (now - this.lastSyncTime > this.minSyncInterval) {
           this.serverDataLoadOtherPlayers();
@@ -66,30 +69,24 @@ class CoreService {
     return new Promise(resolve => setTimeout(resolve, ms));
   }
 
-  getRandomDelay() {
-    const min = 50;
-    const max = 100;
-    return this.sleep(Math.floor(Math.random() * (max - min + 5)) + min);
-  }
-
   setupSDKListeners() {
     this.sdk.data.hangar.isInHangar.watch(this.handleHangarStatus.bind(this));
     this.sdk.data.hangar.vehicle.info.watch(this.handleHangarVehicle.bind(this));
     this.sdk.data.platoon.isInPlatoon.watch(this.handlePlatoonStatus.bind(this));
     this.sdk.data.battle.arena.watch(this.handleArena.bind(this));
     this.sdk.data.battle.isInBattle.watch(this.handleBattleStatus.bind(this));
+    
+    // Основні джерела шкоди
     this.sdk.data.battle.onDamage.watch(this.handleOnAnyDamage.bind(this));
+    this.sdk.data.battle.personal.damageDealt.watch(this.handlePersonalDamage.bind(this));
+    
+    // Інші події
     this.sdk.data.battle.onPlayerFeedback.watch(this.handlePlayerFeedback.bind(this));
     this.sdk.data.battle.onBattleResult.watch(this.handleBattleResult.bind(this));
-    
-    // Додаємо нові обробники для кращого відстеження
-    this.sdk.data.battle.efficiency.damage.watch(this.handleEfficiencyDamage.bind(this));
-    this.sdk.data.battle.efficiency.kills.watch(this.handleEfficiencyKills.bind(this));
-    this.sdk.data.battle.personal.damageDealt.watch(this.handlePersonalDamage.bind(this));
     this.sdk.data.battle.onKilled.watch(this.handleOnKilled.bind(this));
   }
 
-  // Новий метод для обробки стану бою
+  // Обробка стану бою
   handleBattleStatus(isInBattle) {
     if (isInBattle && this.isInPlatoon) {
       // Якщо гравець увійшов у бій і перебуває у взводі, запускаємо частішу синхронізацію
@@ -98,8 +95,7 @@ class CoreService {
       }
       
       this.syncInterval = setInterval(() => {
-        this.syncCounter++;
-        console.log(`Синхронізація в бою #${this.syncCounter}`);
+        console.log('Синхронізація в бою');
         
         if (this.isExistsRecord()) {
           const now = Date.now();
@@ -109,139 +105,85 @@ class CoreService {
           }
         }
       }, 15000); // У бою синхронізуємося частіше - кожні 15 секунд
+      
+      // Скидаємо відстеження подій для нового бою
+      this.clearEventTracking();
     } else if (!isInBattle) {
       // Повертаємося до звичайного режиму синхронізації
       this.startSyncTimer();
     }
   }
 
-  // Новий метод для обробки шкоди з efficiency
-  handleEfficiencyDamage(newValue, oldValue) {
-    if (!this.curentArenaId || !this.isInPlatoon) return;
-    
-    console.log('Efficiency damage updated:', { newValue, oldValue });
-    
-    const additionalDamage = newValue - (oldValue || 0);
-    if (additionalDamage > 0) {
-      // Оновлюємо дані для поточного гравця
-      const playerId = this.curentPlayerId;
-      if (!this.BattleStats[this.curentArenaId].players[playerId]) {
-        this.initializeBattleStats(this.curentArenaId, playerId);
-      }
-      
-      this.BattleStats[this.curentArenaId].players[playerId].damage += additionalDamage;
-      this.BattleStats[this.curentArenaId].players[playerId].points += additionalDamage * GAME_POINTS.POINTS_PER_DAMAGE;
-      
-      // Зберігаємо та оновлюємо дані
-      if (this.isExistsRecord()) {
-        this.saveState();
-        this.eventsCore.emit('statsUpdated');
-        
-        const now = Date.now();
-        if (now - this.lastSyncTime > this.minSyncInterval) {
-          this.serverDataSave();
-          this.lastSyncTime = now;
-        }
-      }
+  // Скидання відстеження подій
+  clearEventTracking() {
+    this.processedEvents = {
+      damage: {},
+      kills: {}
+    };
+  }
+
+  // Перевірка, чи була вже оброблена ця подія шкоди
+  isDamageProcessed(playerId, amount, time) {
+    if (!this.processedEvents.damage[playerId]) {
+      this.processedEvents.damage[playerId] = [];
+      return false;
+    }
+
+    // Перевіряємо, чи була схожа подія за останні 3 секунди
+    const similarEvent = this.processedEvents.damage[playerId].find(event => {
+      return Math.abs(event.amount - amount) < 10 && (time - event.time) < 3000;
+    });
+
+    return !!similarEvent;
+  }
+
+  // Додаємо подію шкоди до відстежених
+  addProcessedDamage(playerId, amount) {
+    if (!this.processedEvents.damage[playerId]) {
+      this.processedEvents.damage[playerId] = [];
+    }
+
+    this.processedEvents.damage[playerId].push({
+      amount: amount,
+      time: Date.now()
+    });
+
+    // Обмежуємо розмір масиву, щоб уникнути перевитрати пам'яті
+    if (this.processedEvents.damage[playerId].length > 20) {
+      this.processedEvents.damage[playerId] = this.processedEvents.damage[playerId].slice(-20);
     }
   }
 
-  // Новий метод для обробки фрагів з efficiency
-  handleEfficiencyKills(newValue, oldValue) {
-    if (!this.curentArenaId || !this.isInPlatoon) return;
+  // Перевірка, чи було вже оброблено вбивство
+  isKillProcessed(playerId, victimId, time) {
+    const killId = `${playerId}-${victimId}`;
     
-    console.log('Efficiency kills updated:', { newValue, oldValue });
-    
-    const additionalKills = newValue - (oldValue || 0);
-    if (additionalKills > 0) {
-      // Оновлюємо дані для поточного гравця
-      const playerId = this.curentPlayerId;
-      if (!this.BattleStats[this.curentArenaId].players[playerId]) {
-        this.initializeBattleStats(this.curentArenaId, playerId);
-      }
-      
-      this.BattleStats[this.curentArenaId].players[playerId].kills += additionalKills;
-      this.BattleStats[this.curentArenaId].players[playerId].points += additionalKills * GAME_POINTS.POINTS_PER_FRAG;
-      
-      // Зберігаємо та оновлюємо дані
-      if (this.isExistsRecord()) {
-        this.saveState();
-        this.eventsCore.emit('statsUpdated');
-        
-        const now = Date.now();
-        if (now - this.lastSyncTime > this.minSyncInterval) {
-          this.serverDataSave();
-          this.lastSyncTime = now;
-        }
-      }
+    if (!this.processedEvents.kills[killId]) {
+      this.processedEvents.kills[killId] = [];
+      return false;
     }
+
+    // Перевіряємо, чи було схоже вбивство за останні 5 секунд
+    const similarEvent = this.processedEvents.kills[killId].find(event => {
+      return (time - event) < 5000;
+    });
+
+    return !!similarEvent;
   }
 
-  // Оновлений метод для personal.damageDealt
-  handlePersonalDamage(newValue, oldValue) {
-    if (!this.curentArenaId || !this.isInPlatoon) return;
+  // Додаємо вбивство до відстежених
+  addProcessedKill(playerId, victimId) {
+    const killId = `${playerId}-${victimId}`;
     
-    console.log('Personal damage updated:', { newValue, oldValue });
-    
-    if (newValue > 0) {
-      const playerId = this.curentPlayerId;
-      if (!this.BattleStats[this.curentArenaId].players[playerId]) {
-        this.initializeBattleStats(this.curentArenaId, playerId);
-      }
-      
-      // Встановлюємо нове значення шкоди та перераховуємо очки
-      const currentDamage = this.BattleStats[this.curentArenaId].players[playerId].damage;
-      if (newValue > currentDamage) {
-        this.BattleStats[this.curentArenaId].players[playerId].damage = newValue;
-        this.BattleStats[this.curentArenaId].players[playerId].points = 
-          newValue * GAME_POINTS.POINTS_PER_DAMAGE + 
-          (this.BattleStats[this.curentArenaId].players[playerId].kills || 0) * GAME_POINTS.POINTS_PER_FRAG;
-        
-        // Зберігаємо та оновлюємо дані
-        if (this.isExistsRecord()) {
-          this.saveState();
-          this.eventsCore.emit('statsUpdated');
-          
-          const now = Date.now();
-          if (now - this.lastSyncTime > this.minSyncInterval) {
-            this.serverDataSave();
-            this.lastSyncTime = now;
-          }
-        }
-      }
+    if (!this.processedEvents.kills[killId]) {
+      this.processedEvents.kills[killId] = [];
     }
-  }
 
-  // Новий обробник для onKilled
-  handleOnKilled(data) {
-    if (!this.curentArenaId || !this.isInPlatoon || !data || !data.attacker || !data.attacker.playerId) return;
-    
-    console.log('onKilled event:', data);
-    
-    const attackerId = data.attacker.playerId;
-    // Перевіряємо, чи вбивця є гравцем взводу
-    if (this.PlayersInfo[attackerId]) {
-      console.log(`Фраг від члена взводу: ${this.PlayersInfo[attackerId]}`);
-      
-      if (!this.BattleStats[this.curentArenaId].players[attackerId]) {
-        this.initializeBattleStats(this.curentArenaId, attackerId);
-      }
-      
-      // Додаємо фраг і очки
-      this.BattleStats[this.curentArenaId].players[attackerId].kills += 1;
-      this.BattleStats[this.curentArenaId].players[attackerId].points += GAME_POINTS.POINTS_PER_FRAG;
-      
-      // Зберігаємо та оновлюємо дані
-      if (this.isExistsRecord()) {
-        this.saveState();
-        this.eventsCore.emit('statsUpdated');
-        
-        const now = Date.now();
-        if (now - this.lastSyncTime > this.minSyncInterval) {
-          this.serverDataSave();
-          this.lastSyncTime = now;
-        }
-      }
+    this.processedEvents.kills[killId].push(Date.now());
+
+    // Обмежуємо розмір масиву
+    if (this.processedEvents.kills[killId].length > 5) {
+      this.processedEvents.kills[killId] = this.processedEvents.kills[killId].slice(-5);
     }
   }
 
@@ -376,7 +318,6 @@ class CoreService {
     return battlePoints;
   }
 
-
   calculateBattleData(arenaId = this.curentArenaId) {
     let battlePoints = 0;
     let battleDamage = 0;
@@ -450,7 +391,6 @@ class CoreService {
     return { teamPoints, teamDamage, teamKills, wins, battles };
   }
 
-
   getAccessKey() {
     return localStorage.getItem('accessKey');
   }
@@ -460,7 +400,6 @@ class CoreService {
     if (!accessKey) {
       throw new Error('Access key not found');
     }
-
 
     for (let i = 0; i < retries; i++) {
       try {
@@ -498,7 +437,6 @@ class CoreService {
     return false;
   }
 
-
   async loadFromServer() {
     try {
       const accessKey = this.getAccessKey();
@@ -534,7 +472,6 @@ class CoreService {
       throw error;
     }
   }
-
 
   async loadFromServerOtherPlayers() {
     try {
@@ -584,25 +521,33 @@ class CoreService {
               const existingPlayer = existingBattle.players[playerId];
               
               if (existingPlayer) {
-                console.log(`Оновлюємо дані гравця ${playerId} (${newPlayerData.name}):`);
-                console.log('- Поточна шкода:', existingPlayer.damage, 'нова шкода:', newPlayerData.damage);
-                console.log('- Поточні фраги:', existingPlayer.kills, 'нові фраги:', newPlayerData.kills);
-                
                 // Оновлюємо тільки якщо нові значення більші за існуючі
-                const updatedDamage = Math.max(existingPlayer.damage || 0, newPlayerData.damage || 0);
-                const updatedKills = Math.max(existingPlayer.kills || 0, newPlayerData.kills || 0);
+                let updated = false;
                 
-                if (updatedDamage > existingPlayer.damage || updatedKills > existingPlayer.kills) {
+                if ((newPlayerData.damage || 0) > (existingPlayer.damage || 0)) {
+                  this.BattleStats[battleId].players[playerId].damage = newPlayerData.damage;
+                  updated = true;
+                  console.log(`Оновлено шкоду гравця ${playerId} до ${newPlayerData.damage}`);
+                }
+                
+                if ((newPlayerData.kills || 0) > (existingPlayer.kills || 0)) {
+                  this.BattleStats[battleId].players[playerId].kills = newPlayerData.kills;
+                  updated = true;
+                  console.log(`Оновлено фраги гравця ${playerId} до ${newPlayerData.kills}`);
+                }
+                
+                if (updated) {
+                  // Перераховуємо очки
+                  this.BattleStats[battleId].players[playerId].points = 
+                    (this.BattleStats[battleId].players[playerId].damage * GAME_POINTS.POINTS_PER_DAMAGE) + 
+                    (this.BattleStats[battleId].players[playerId].kills * GAME_POINTS.POINTS_PER_FRAG);
+                  
                   dataUpdated = true;
                 }
                 
-                this.BattleStats[battleId].players[playerId] = {
-                  name: newPlayerData.name || existingPlayer.name, 
-                  vehicle: newPlayerData.vehicle || existingPlayer.vehicle,
-                  damage: updatedDamage,
-                  kills: updatedKills,
-                  points: (updatedDamage * GAME_POINTS.POINTS_PER_DAMAGE) + (updatedKills * GAME_POINTS.POINTS_PER_FRAG)
-                };
+                // Оновлюємо ім'я та техніку в будь-якому випадку
+                this.BattleStats[battleId].players[playerId].name = newPlayerData.name || existingPlayer.name;
+                this.BattleStats[battleId].players[playerId].vehicle = newPlayerData.vehicle || existingPlayer.vehicle;
               } else {
                 console.log(`Додаємо нового гравця ${playerId} (${newPlayerData.name})`);
                 this.BattleStats[battleId].players[playerId] = newPlayerData;
@@ -640,7 +585,6 @@ class CoreService {
       throw error;
     }
   }
-  
 
   async clearServerData() {
     try {
@@ -671,7 +615,6 @@ class CoreService {
 
   async warmupServer() {
     try {
-     
       const response = await fetch(`${atob(STATS.STATUS)}`, {
         method: 'GET',
         headers: {
@@ -717,11 +660,6 @@ class CoreService {
       this.saveToServer().then(success => {
         if (success) {
           console.log('Дані успішно збережені на сервер');
-          
-          // Оновлюємо дані інших гравців після успішного збереження
-          setTimeout(() => {
-            this.serverDataLoadOtherPlayers();
-          }, 1000);
         }
       });
     } catch (error) {
@@ -735,7 +673,6 @@ class CoreService {
         if (success) {
           setTimeout(() => {
             this.loadFromServerOtherPlayers().then(() => {
-              this.eventsCore.emit('statsUpdated');
               this.saveState();
             });
           }, 1000);
@@ -747,6 +684,7 @@ class CoreService {
   }
 
   handlePlatoonStatus(isInPlatoon) {
+    console.log('Статус взводу змінено:', isInPlatoon);
     this.isInPlatoon = isInPlatoon;
     this.saveState();
     
@@ -771,7 +709,7 @@ class CoreService {
     const playersID = this.getPlayersIds();
     this.curentPlayerId = this.sdk.data.player.id.value;
 
-   if (this.curentPlayerId === null) return;
+    if (this.curentPlayerId === null) return;
     if ((this.isInPlatoon && playersID.length > 3) || (!this.isInPlatoon && playersID.length >= 1)) {
       return;
     }
@@ -802,152 +740,171 @@ class CoreService {
       this.BattleStats[this.curentArenaId].players[this.curentPlayerId].vehicle = this.curentVehicle;
       this.BattleStats[this.curentArenaId].players[this.curentPlayerId].name = this.sdk.data.player.name.value;
       
-      this.serverData();
+      // Очищаємо відстеження подій для нового бою
+      this.clearEventTracking();
       
-      // Оновлюємо статус бою - він почався
-      if (this.sdk.data.battle.isInBattle && this.sdk.data.battle.isInBattle.value === true) {
-        this.handleBattleStatus(true);
+      // Зберігаємо дані та завантажуємо інформацію про інших гравців
+      this.serverData();
+    }
+  }
+
+  // Обробка personal.damageDealt як надійного джерела шкоди для поточного гравця
+  handlePersonalDamage(newValue, oldValue) {
+    if (!this.curentArenaId || !this.curentPlayerId) return;
+    
+    // Пропускаємо, якщо значення не змінилося або не число
+    if (newValue === oldValue || typeof newValue !== 'number' || newValue <= 0) return;
+    
+    // Ініціалізуємо гравця, якщо потрібно
+    if (!this.BattleStats[this.curentArenaId].players[this.curentPlayerId]) {
+      this.initializeBattleStats(this.curentArenaId, this.curentPlayerId);
+    }
+    
+    const currentPlayer = this.BattleStats[this.curentArenaId].players[this.curentPlayerId];
+    
+    // Оновлюємо шкоду тільки якщо нове значення більше
+    if (newValue > currentPlayer.damage) {
+      console.log(`Оновлюємо шкоду поточного гравця з ${currentPlayer.damage} до ${newValue}`);
+      
+      currentPlayer.damage = newValue;
+      currentPlayer.points = (newValue * GAME_POINTS.POINTS_PER_DAMAGE) + (currentPlayer.kills * GAME_POINTS.POINTS_PER_FRAG);
+      
+      // Зберігаємо оновлені дані та сповіщаємо про зміни
+      this.saveState();
+      this.eventsCore.emit('statsUpdated');
+      
+      // Синхронізуємо з сервером, якщо пройшов мінімальний інтервал
+      const now = Date.now();
+      if (now - this.lastSyncTime > this.minSyncInterval) {
+        this.serverDataSave();
+        this.lastSyncTime = now;
       }
     }
   }
 
+  // Обробка onDamage для отримання шкоди від взводних гравців
   handleOnAnyDamage(onDamageData) {
     if (!onDamageData || !this.curentArenaId) return;
 
-    const playersID = this.getPlayersIds();
-    let needUpdate = false;
-
-    // Якщо шкоду наніс гравець взводу
-    if (onDamageData.attacker && onDamageData.attacker.playerId && playersID.includes(onDamageData.attacker.playerId)) {
-      const attackerId = onDamageData.attacker.playerId;
-      const damageAmount = onDamageData.damage || 0;
+    // Перевіряємо, чи є дані про нападника
+    if (!onDamageData.attacker || !onDamageData.attacker.playerId) return;
+    
+    const attackerId = onDamageData.attacker.playerId;
+    const damageAmount = onDamageData.damage || 0;
+    
+    // Пропускаємо нульову шкоду
+    if (damageAmount <= 0) return;
+    
+    // Отримуємо список гравців взводу
+    const platoonPlayers = this.getPlayersIds();
+    
+    // Перевіряємо, чи є нападник гравцем взводу і не є поточним гравцем
+    if (platoonPlayers.includes(attackerId) && attackerId !== this.curentPlayerId) {
+      const currentTime = Date.now();
       
-      if (damageAmount <= 0) return;
+      // Перевіряємо, чи була ця шкода вже оброблена
+      if (this.isDamageProcessed(attackerId, damageAmount, currentTime)) {
+        console.log(`Шкода ${damageAmount} від ${this.PlayersInfo[attackerId]} вже була оброблена`);
+        return;
+      }
       
-      console.log(`Зафіксовано шкоду ${damageAmount} від гравця ${this.PlayersInfo[attackerId]}`);
+      console.log(`Обробка шкоди ${damageAmount} від гравця взводу ${this.PlayersInfo[attackerId]}`);
       
-      // Ініціалізуємо статистику бою для гравця, якщо потрібно
+      // Додаємо подію до відстежених
+      this.addProcessedDamage(attackerId, damageAmount);
+      
+      // Ініціалізуємо гравця, якщо потрібно
       if (!this.BattleStats[this.curentArenaId].players[attackerId]) {
         this.initializeBattleStats(this.curentArenaId, attackerId);
       }
       
-      // Оновлюємо статистику гравця
+      // Оновлюємо шкоду та очки
       this.BattleStats[this.curentArenaId].players[attackerId].damage += damageAmount;
-      this.BattleStats[this.curentArenaId].players[attackerId].points += damageAmount * GAME_POINTS.POINTS_PER_DAMAGE;
+      this.BattleStats[this.curentArenaId].players[attackerId].points = 
+        (this.BattleStats[this.curentArenaId].players[attackerId].damage * GAME_POINTS.POINTS_PER_DAMAGE) +
+        (this.BattleStats[this.curentArenaId].players[attackerId].kills * GAME_POINTS.POINTS_PER_FRAG);
       
-      needUpdate = true;
-    }
-    
-    // Додатково перевіряємо на випадок, якщо наш гравець отримав шкоду від іншого члена взводу
-    if (onDamageData.target && onDamageData.target.playerId && 
-        onDamageData.attacker && onDamageData.attacker.playerId &&
-        playersID.includes(onDamageData.target.playerId) && 
-        playersID.includes(onDamageData.attacker.playerId)) {
-      
-      needUpdate = true;
-    }
-
-    if (needUpdate && this.isExistsRecord()) {
+      // Зберігаємо дані та оновлюємо інтерфейс
       this.saveState();
       this.eventsCore.emit('statsUpdated');
       
+      // Відправляємо дані на сервер, якщо пройшов мінімальний інтервал
       const now = Date.now();
       if (now - this.lastSyncTime > this.minSyncInterval) {
+        this.serverDataSave();
+        this.lastSyncTime = now;
+      }
+    }
+  }
+
+  // Обробка події вбивства
+  handleOnKilled(data) {
+    if (!this.curentArenaId || !data || !data.attacker || !data.attacker.playerId) return;
+    
+    const attackerId = data.attacker.playerId;
+    const platoonPlayers = this.getPlayersIds();
+    
+    // Перевіряємо, чи є нападник гравцем взводу
+    if (platoonPlayers.includes(attackerId)) {
+      const victimId = data.victim ? (data.victim.id || data.victim.playerId || "unknown") : "unknown";
+      const currentTime = Date.now();
+      
+      // Перевіряємо, чи було це вбивство вже оброблено
+      if (this.isKillProcessed(attackerId, victimId, currentTime)) {
+        console.log(`Фраг ${this.PlayersInfo[attackerId]} проти ${victimId} вже було оброблено`);
+        return;
+      }
+      
+      console.log(`Обробка фрагу від гравця взводу ${this.PlayersInfo[attackerId]}`);
+      
+      // Додаємо вбивство до відстежених
+      this.addProcessedKill(attackerId, victimId);
+      
+      // Ініціалізуємо гравця, якщо потрібно
+      if (!this.BattleStats[this.curentArenaId].players[attackerId]) {
+        this.initializeBattleStats(this.curentArenaId, attackerId);
+      }
+      
+      // Оновлюємо кількість фрагів та очки
+      this.BattleStats[this.curentArenaId].players[attackerId].kills += 1;
+      this.BattleStats[this.curentArenaId].players[attackerId].points = 
+        (this.BattleStats[this.curentArenaId].players[attackerId].damage * GAME_POINTS.POINTS_PER_DAMAGE) +
+        (this.BattleStats[this.curentArenaId].players[attackerId].kills * GAME_POINTS.POINTS_PER_FRAG);
+      
+      // Зберігаємо дані та оновлюємо інтерфейс
+      this.saveState();
+      this.eventsCore.emit('statsUpdated');
+      
+      // Відправляємо дані на сервер, якщо пройшов мінімальний інтервал
+      const now = Date.now();
+      if (now - this.lastSyncTime > this.minSyncInterval) {
+        this.serverDataSave();
+        this.lastSyncTime = now;
+      }
+    }
+  }
+
+  // Обробка різних подій зворотного зв'язку
+  handlePlayerFeedback(feedback) {
+    if (!feedback || !feedback.type || !this.curentArenaId || !this.curentPlayerId) return;
+    
+    // Основні події - шкода та фраги - вже обробляються окремо
+    // Тут тільки відстежуємо допоміжні події для синхронізації
+
+    // Регулярно оновлюємо дані з сервера при деяких типах подій
+    const triggerSyncEvents = ['radioAssist', 'trackAssist', 'tanking', 'targetVisibility', 'spotted'];
+    
+    if (triggerSyncEvents.includes(feedback.type)) {
+      const now = Date.now();
+      if (now - this.lastSyncTime > this.minSyncInterval && this.isInPlatoon) {
+        console.log(`Отримано подію ${feedback.type}, синхронізуємо дані`);
         this.serverDataLoadOtherPlayers();
         this.lastSyncTime = now;
       }
     }
   }
 
-  handlePlayerFeedback(feedback) {
-    if (!feedback || !feedback.type || !this.curentArenaId) return;
-    
-    console.log('Отримано PlayerFeedback:', feedback.type);
-
-    if (feedback.type === 'damage') {
-      this.handlePlayerDamage(feedback.data);
-    } else if (feedback.type === 'kill') {
-      this.handlePlayerKill(feedback.data);
-    } else if (feedback.type === 'radioAssist' || 
-              feedback.type === 'trackAssist' || 
-              feedback.type === 'tanking' ||
-              feedback.type === 'receivedDamage' ||
-              feedback.type === 'targetVisibility' ||
-              feedback.type === 'detected' ||
-              feedback.type === 'spotted') {
-      
-      // Для інших типів зворотного зв'язку перевіряємо, чи потрібно синхронізувати дані
-      const playersID = this.getPlayersIds();
-      
-      if (playersID.length > 1 && this.isInPlatoon) {
-        const now = Date.now();
-        if (now - this.lastSyncTime > this.minSyncInterval) {
-          console.log(`Отримано подію ${feedback.type}, завантажуємо дані інших гравців`);
-          this.serverDataLoadOtherPlayers();
-          this.lastSyncTime = now;
-        }
-      }
-    }
-  }
-
-  handlePlayerDamage(damageData) {
-    if (!damageData || !this.curentArenaId || !this.curentPlayerId) return;
-    
-    console.log('Отримано подію damage, шкода:', damageData);
-
-    const arenaId = this.curentArenaId;
-    const playerId = this.curentPlayerId;
-    
-    if (!this.BattleStats[arenaId].players[playerId]) {
-      this.initializeBattleStats(arenaId, playerId);
-    }
-
-    const damageAmount = damageData.damage || 0;
-    if (damageAmount <= 0) return;
-
-    this.BattleStats[arenaId].players[playerId].damage += damageAmount;
-    this.BattleStats[arenaId].players[playerId].points += damageAmount * GAME_POINTS.POINTS_PER_DAMAGE;
-
-    
-    if (this.isExistsRecord()) {
-      this.saveState();
-      this.eventsCore.emit('statsUpdated');
-      
-      const now = Date.now();
-      if (now - this.lastSyncTime > this.minSyncInterval) {
-        this.serverDataSave();
-        this.lastSyncTime = now;
-      }
-    }
-  }
-
-  handlePlayerKill(killData) {
-    if (!killData || !this.curentArenaId || !this.curentPlayerId) return;
-    
-    console.log('Отримано подію kill');
-
-    const arenaId = this.curentArenaId;
-    const playerId = this.curentPlayerId;
-    
-    if (!this.BattleStats[arenaId].players[playerId]) {
-      this.initializeBattleStats(arenaId, playerId);
-    }
-
-    this.BattleStats[arenaId].players[playerId].kills += 1;
-    this.BattleStats[arenaId].players[playerId].points += GAME_POINTS.POINTS_PER_FRAG;
-
-    if (this.isExistsRecord()) {
-      this.saveState();
-      this.eventsCore.emit('statsUpdated');
-      
-      const now = Date.now();
-      if (now - this.lastSyncTime > this.minSyncInterval) {
-        this.serverDataSave();
-        this.lastSyncTime = now;
-      }
-    }
-  }
-
+  // Обробка результатів бою - найбільш надійне джерело даних
   handleBattleResult(result) {
     if (!result || !result.vehicles || !result.players) {
       console.error("Invalid battle result data");
@@ -961,6 +918,9 @@ class CoreService {
 
     this.curentPlayerId = result.personal.avatar.accountDBID;
     
+    // Скидаємо відстеження подій для завершеного бою
+    this.clearEventTracking();
+    
     // Перевіряємо, чи бій вже існує в статистиці
     if (!this.BattleStats[arenaId]) {
       this.initializeBattleStats(arenaId, this.curentPlayerId);
@@ -968,9 +928,9 @@ class CoreService {
     
     this.BattleStats[arenaId].duration = result.common.duration;
 
+    // Визначаємо результат бою
     const playerTeam = Number(result.players[this.curentPlayerId].team);
     const winnerTeam = Number(result.common.winnerTeam);
-
 
     if (playerTeam !== undefined && playerTeam !== 0 && winnerTeam !== undefined) {
       if (playerTeam === winnerTeam) {
@@ -982,17 +942,17 @@ class CoreService {
       }
     }
 
-    // Оновлюємо статистику всіх гравців взводу
+    // Оновлюємо статистику всіх гравців взводу на основі результатів бою
     const playersIds = this.getPlayersIds();
     playersIds.forEach(playerId => {
       if (!this.BattleStats[arenaId].players[playerId]) {
         this.initializeBattleStats(arenaId, playerId);
       }
       
-      // Шукаємо дані гравця в результатах
-      let playerFound = false;
+      // Шукаємо дані гравця в результатах бою
+      let foundPlayerData = null;
       
-      // Перевіряємо дані в vehicles
+      // Шукаємо в vehicles
       for (const vehicleId in result.vehicles) {
         const vehicles = result.vehicles[vehicleId];
         
@@ -1002,13 +962,10 @@ class CoreService {
                 (vehicle.playerID && vehicle.playerID == playerId) ||
                 (vehicle.dbid && vehicle.dbid == playerId)) {
               
-              // Оновлюємо статистику
-              this.BattleStats[arenaId].players[playerId].damage = vehicle.damageDealt || 0;
-              this.BattleStats[arenaId].players[playerId].kills = vehicle.kills || 0;
-              this.BattleStats[arenaId].players[playerId].points = 
-                (vehicle.damageDealt || 0) + ((vehicle.kills || 0) * GAME_POINTS.POINTS_PER_FRAG);
-              
-              playerFound = true;
+              foundPlayerData = {
+                damage: vehicle.damageDealt || 0,
+                kills: vehicle.kills || 0
+              };
               break;
             }
           }
@@ -1017,47 +974,45 @@ class CoreService {
               (vehicles.playerID && vehicles.playerID == playerId) ||
               (vehicles.dbid && vehicles.dbid == playerId)) {
             
-            // Оновлюємо статистику
-            this.BattleStats[arenaId].players[playerId].damage = vehicles.damageDealt || 0;
-            this.BattleStats[arenaId].players[playerId].kills = vehicles.kills || 0;
-            this.BattleStats[arenaId].players[playerId].points = 
-              (vehicles.damageDealt || 0) + ((vehicles.kills || 0) * GAME_POINTS.POINTS_PER_FRAG);
-            
-            playerFound = true;
+            foundPlayerData = {
+              damage: vehicles.damageDealt || 0,
+              kills: vehicles.kills || 0
+            };
           }
         }
         
-        if (playerFound) break;
+        if (foundPlayerData) break;
       }
       
-      // Якщо гравця не знайдено в vehicles, шукаємо в players
-      if (!playerFound && result.players[playerId]) {
+      // Якщо не знайдено в vehicles, шукаємо в players
+      if (!foundPlayerData && result.players[playerId]) {
         const playerResult = result.players[playerId];
         
-        // Шукаємо дані про шкоду і фраги
-        let playerDamage = 0;
-        let playerKills = 0;
+        foundPlayerData = {
+          damage: playerResult.damageDealt || playerResult.damage || 0,
+          kills: playerResult.kills || playerResult.frags || 0
+        };
+      }
+      
+      // Якщо знайдені дані, оновлюємо статистику гравця
+      if (foundPlayerData) {
+        console.log(`Оновлюємо дані гравця ${playerId} на основі результатів бою:`, foundPlayerData);
         
-        if (playerResult.damageDealt) playerDamage = playerResult.damageDealt;
-        if (playerResult.damage) playerDamage = playerResult.damage;
-        if (playerResult.kills) playerKills = playerResult.kills;
-        if (playerResult.frags) playerKills = playerResult.frags;
-        
-        // Оновлюємо тільки якщо знайдені нові дані
-        if (playerDamage > 0 || playerKills > 0) {
-          this.BattleStats[arenaId].players[playerId].damage = playerDamage;
-          this.BattleStats[arenaId].players[playerId].kills = playerKills;
-          this.BattleStats[arenaId].players[playerId].points = 
-            playerDamage + (playerKills * GAME_POINTS.POINTS_PER_FRAG);
-        }
+        // Замінюємо дані гравця тими, що з результатів бою
+        this.BattleStats[arenaId].players[playerId].damage = foundPlayerData.damage;
+        this.BattleStats[arenaId].players[playerId].kills = foundPlayerData.kills;
+        this.BattleStats[arenaId].players[playerId].points = 
+          (foundPlayerData.damage * GAME_POINTS.POINTS_PER_DAMAGE) + 
+          (foundPlayerData.kills * GAME_POINTS.POINTS_PER_FRAG);
       }
     });
     
+    // Розігріваємо сервер і зберігаємо дані
     this.warmupServer();
     this.saveState();
     this.eventsCore.emit('statsUpdated');
     
-    // Гарантована синхронізація в кінці бою
+    // Гарантована синхронізація даних після закінчення бою
     setTimeout(() => {
       if (this.isExistsRecord()) {
         this.serverData();
@@ -1065,7 +1020,7 @@ class CoreService {
     }, 1000);
   }
 
-  // Зупиняємо інтервал синхронізації при знищенні об'єкта
+  // Зупиняємо синхронізацію при знищенні об'єкта
   cleanup() {
     if (this.syncInterval) {
       clearInterval(this.syncInterval);
