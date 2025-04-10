@@ -409,10 +409,10 @@ class CoreService {
     }
 
     const data = await response.json();
-    console.log('Відповідь сервера:', data); // Для діагностики
+    console.log('Відповідь сервера:', data);
 
     if (data.success) {
-      if (!data.BattleStats && !data.PlayerInfo) {
+      if (!data.BattleStats) {
         console.log('Метод loadFromServerOtherPlayers виконано успішно, але даних не отримано');
         return true;
       }
@@ -454,6 +454,8 @@ class CoreService {
         });
       }
 
+      // Закоментований код обробки PlayerInfo
+      /*
       if (data.PlayerInfo) {
         console.log('Метод loadFromServerOtherPlayers виконано успішно, отримано дані гравців');
         
@@ -463,6 +465,7 @@ class CoreService {
           }
         });
       }
+      */
 
       return true;
     }
