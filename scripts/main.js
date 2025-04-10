@@ -18,6 +18,11 @@ export default class SquadWidget {
       
       await this.warmupServer();
       this.initializeServices();
+      
+      // Додаємо обробник подій для завершення роботи
+      window.addEventListener('beforeunload', () => {
+        this.cleanup();
+      });
     } catch (error) {
       console.error('Error in init:', error);
       this.showAccessDenied();
@@ -29,11 +34,6 @@ export default class SquadWidget {
       this.coreService = new CoreService();
       this.uiService = new UIService(this.coreService);
       this.initialize();
-      
-      // Додаємо обробник подій для коректного завершення роботи
-      window.addEventListener('beforeunload', () => {
-        this.cleanup();
-      });
     } catch (error) {
       console.error('Error initializing services:', error);
     }
@@ -173,7 +173,7 @@ export default class SquadWidget {
     }
   }
   
-  // Метод для коректного завершення роботи віджету
+  // Метод для очищення
   cleanup() {
     if (this.coreService) {
       this.coreService.cleanup();
