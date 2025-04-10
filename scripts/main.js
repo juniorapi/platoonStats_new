@@ -9,17 +9,15 @@ export default class SquadWidget {
 
   async init() {
     try {
-
-
       const hasAccess = await this.checkAccessKey();
       
       if (!hasAccess) {
         this.showAccessDenied();
         return;
-      
       }
+      
+      await this.warmupServer();
       this.initializeServices();
-      // await this.warmupServer();
     } catch (error) {
       console.error('Error in init:', error);
       this.showAccessDenied();
@@ -31,6 +29,11 @@ export default class SquadWidget {
       this.coreService = new CoreService();
       this.uiService = new UIService(this.coreService);
       this.initialize();
+      
+      // Додаємо обробник подій для коректного завершення роботи
+      window.addEventListener('beforeunload', () => {
+        this.cleanup();
+      });
     } catch (error) {
       console.error('Error initializing services:', error);
     }
@@ -45,55 +48,48 @@ export default class SquadWidget {
     }
   }
 
-//   async warmupServer() {
-//     try {
-//         const statusUrl = `${atob(STATS.STATUS)}`;
-//         // console.log("Перевірка статусу сервера...");
-        
-//         const controller = new AbortController();
-//         const timeoutId = setTimeout(() => controller.abort(), 175000);
-        
-//         const response = await fetch(statusUrl, {
-//             method: 'GET',
-//             headers: {
-//                 'Content-Type': 'application/json'
-//             },
-//             signal: controller.signal
-//         });
+  async warmupServer() {
+    try {
+      const statusUrl = `${atob(STATS.STATUS)}`;
+      console.log("Перевірка статусу сервера...");
+      
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000);
+      
+      const response = await fetch(statusUrl, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        signal: controller.signal
+      });
 
-//         clearTimeout(timeoutId);
+      clearTimeout(timeoutId);
 
-//         if (!response.ok) {
-//             console.warn("Сервер не відповідає належним чином");
-//             return false;
-//         }
+      if (!response.ok) {
+        console.warn("Сервер не відповідає належним чином");
+        return false;
+      }
 
-//         const data = await response.json();
-        
-//         if (data.status === 'ok') {
-//             // console.log("Сервер активний та готовий до роботи", {
-//             //     timestamp: data.timestamp,
-//             //     database: data.database,
-//             //     uptime: data.uptime
-//             // });
-//             return true;
-//         } else {
-//             console.warn("Сервер повідомляє про проблеми:", data);
-//             return false;
-//         }
+      const data = await response.json();
+      
+      if (data.status === 'ok') {
+        console.log("Сервер активний та готовий до роботи");
+        return true;
+      } else {
+        console.warn("Сервер повідомляє про проблеми:", data);
+        return false;
+      }
 
-//     } catch (error) {
-//         if (error.name === 'AbortError') {
-//             console.warn("Перевищено час очікування відповіді від сервера");
-//         } else {
-//             console.error("Помилка при перевірці статусу сервера:", error);
-//         }
-//         return false;
-//     } finally {
-
-//         await new Promise(resolve => setTimeout(resolve, 5000));
-//     }
-// }
+    } catch (error) {
+      if (error.name === 'AbortError') {
+        console.warn("Перевищено час очікування відповіді від сервера");
+      } else {
+        console.error("Помилка при перевірці статусу сервера:", error);
+      }
+      return false;
+    }
+  }
 
   async checkAccessKey() {
     try {
@@ -174,6 +170,17 @@ export default class SquadWidget {
       document.body.appendChild(container);
     } catch (error) {
       console.error('Error in showAccessDenied:', error);
+    }
+  }
+  
+  // Метод для коректного завершення роботи віджету
+  cleanup() {
+    if (this.coreService) {
+      this.coreService.cleanup();
+    }
+    
+    if (this.uiService) {
+      this.uiService.cleanup();
     }
   }
 }
