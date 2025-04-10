@@ -7,6 +7,11 @@ class UIService {
     });
 
     this.setupEventListeners();
+    
+    // Додаємо таймер для періодичного оновлення інтерфейсу
+    this.updateTimer = setInterval(() => {
+      this.updatePlayersUI();
+    }, 10000); // Оновлюємо інтерфейс кожні 10 секунд
   }
 
   updatePlayersUI() {
@@ -44,59 +49,59 @@ class UIService {
   }
 
   createPlayerRow(playerId, style) {
-  const playerRow = document.createElement('div');
-  playerRow.className = 'player-row';
-  if (style) playerRow.style = style;
+    const playerRow = document.createElement('div');
+    playerRow.className = 'player-row';
+    if (style) playerRow.style = style;
 
-  const playerName = this.core.PlayersInfo[playerId];
-  const arenaId = this.core.curentArenaId;
-  const cleanName = this.formatPlayerName(playerName);
-  const displayName = this.truncateName(cleanName);
+    const playerName = this.core.PlayersInfo[playerId];
+    const arenaId = this.core.curentArenaId;
+    const cleanName = this.formatPlayerName(playerName);
+    const displayName = this.truncateName(cleanName);
 
-  let battleDamage = 0;
-  let battleKills = 0;
+    let battleDamage = 0;
+    let battleKills = 0;
 
-  if (arenaId && this.core.BattleStats[arenaId] &&
-    this.core.BattleStats[arenaId].players &&
-    this.core.BattleStats[arenaId].players[playerId]) {
-    battleDamage = this.core.BattleStats[arenaId].players[playerId].damage || 0;
-    battleKills = this.core.BattleStats[arenaId].players[playerId].kills || 0;
+    if (arenaId && this.core.BattleStats[arenaId] &&
+      this.core.BattleStats[arenaId].players &&
+      this.core.BattleStats[arenaId].players[playerId]) {
+      battleDamage = this.core.BattleStats[arenaId].players[playerId].damage || 0;
+      battleKills = this.core.BattleStats[arenaId].players[playerId].kills || 0;
+    }
+
+    const totalPlayerData = this.core.calculatePlayerData(playerId);
+    const displayDamage = totalPlayerData.playerDamage;
+    const displayKills = totalPlayerData.playerKills;
+    const playerPoints = totalPlayerData.playerPoints;
+
+    // Додаємо атрибут data-player-id для ідентифікації рядків гравців
+    playerRow.setAttribute('data-player-id', playerId);
+
+    playerRow.innerHTML = `
+      <div class="player-name" title="${cleanName}">${displayName}</div>
+      <div class="stat-column">
+        <div class="damage">+${battleDamage.toLocaleString()}</div>
+        <div class="damage-in-battle" style="font-size: 9px; color: #ff6a00;">${displayDamage.toLocaleString()}</div>
+      </div>
+      <div class="stat-column">
+        <div class="frags">+${battleKills}</div>
+        <div class="frags-in-battle" style="font-size: 9px; color: #00a8ff;">${displayKills}</div>
+      </div>
+      <!-- Прихований стовпчик з очками -->
+      <div class="stat-column" style="display:none">
+        <div class="points">${playerPoints.toLocaleString()}</div>
+      </div>
+    `;
+
+    return playerRow;
   }
-
-  const totalPlayerData = this.core.calculatePlayerData(playerId);
-  const displayDamage = totalPlayerData.playerDamage;
-  const displayKills = totalPlayerData.playerKills;
-  const playerPoints = totalPlayerData.playerPoints;
-
-  playerRow.innerHTML = `
-    <div class="player-name" title="${cleanName}">${displayName}</div>
-    <div class="stat-column">
-      <div class="damage">${displayDamage.toLocaleString()}</div>
-      <div class="damage-in-battle" style="font-size: 9px; color: #ff6a00;">+${battleDamage.toLocaleString()}</div>
-    </div>
-    <div class="stat-column">
-      <div class="frags">${displayKills}</div>
-      <div class="frags-in-battle" style="font-size: 9px; color: #00a8ff;">+${battleKills}</div>
-    </div>
-    <!-- Прихований стовпчик з очками -->
-    <div class="stat-column" style="display:none">
-      <div class="points">${playerPoints.toLocaleString()}</div>
-    </div>
-  `;
-
-  return playerRow;
-}
 
   updateTeamStatsUI() {
     const teamStats = this.core.calculateTeamData();
-    document.getElementById('team-damage').textContent = teamStats.teamDamage.toLocaleString();
-    document.getElementById('team-frags').textContent = teamStats.teamKills.toLocaleString();
+    const totalBattlePoints = this.core.calculateBattleData();
     
     // Оновлення загальних фрагів на сторінці
-    const totalFragsElement = document.getElementById('total-frags');
-    if (totalFragsElement) {
-      totalFragsElement.textContent = teamStats.teamKills.toLocaleString();
-    }
+    document.getElementById('team-damage').textContent = teamStats.teamDamage.toLocaleString();
+    document.getElementById('team-frags').textContent = teamStats.teamKills.toLocaleString();
     
     // Оновлюємо найкращий і найгірший бій
     const battleStats = this.core.findBestAndWorstBattle();
@@ -117,10 +122,17 @@ class UIService {
     
     document.getElementById('battles-count').textContent =
       `${teamStats.wins}/${teamStats.battles}`;
+
+    // Перевіряємо, чи є елемент team-now-points
+    const teamNowPoints = document.getElementById('team-now-points');
+    if (teamNowPoints) {
+      teamNowPoints.textContent = totalBattlePoints.battlePoints.toLocaleString();
+    }
+    
     document.getElementById('team-points').textContent = teamStats.teamPoints.toLocaleString();
   }
 
-  showSaveNotification() {
+  showSaveNotification(message = 'Дані оновлено') {
     const notification = document.createElement('div');
     Object.assign(notification.style, {
       position: 'fixed',
@@ -135,7 +147,7 @@ class UIService {
       boxShadow: '0 2px 10px rgba(0, 0, 0, 0.2)'
     });
 
-    notification.textContent = 'Бій збережено в історію';
+    notification.textContent = message;
     document.body.appendChild(notification);
 
     setTimeout(() => {
@@ -146,7 +158,6 @@ class UIService {
   }
 
   setupEventListeners() {
-
     const refreshBtn = document.getElementById('refresh-btn');
     if (refreshBtn) {
       let isLoading = false;
@@ -165,6 +176,9 @@ class UIService {
           await this.core.loadFromServer();
           this.updatePlayersUI();
           this.core.saveState();
+          
+          // Додаємо повідомлення про успішне оновлення
+          this.showSaveNotification('Дані успішно оновлено');
 
         } catch (error) {
           console.error('Помилка при оновленні даних:', error);
@@ -180,7 +194,7 @@ class UIService {
         } finally {
           isLoading = false;
           refreshBtn.disabled = false;
-          refreshBtn.textContent = 'Оновити дані';
+          refreshBtn.textContent = 'Оновити віджет';
         }
       });
     }
@@ -215,7 +229,7 @@ class UIService {
     
           await this.core.clearServerData();
           
-          this.core.clearState()
+          this.core.clearState();
           this.updatePlayersUI();
     
           alert('Статистику успішно видалено!');
@@ -248,6 +262,48 @@ class UIService {
         window.open('./battle-history/?' + accessKey, '_blank');
       });
     }
+    
+    // Додаємо кнопку для ручної синхронізації
+    const syncNowBtn = document.getElementById('sync-now-btn');
+    if (syncNowBtn) {
+      syncNowBtn.addEventListener('click', () => {
+        if (this.core.isExistsRecord()) {
+          this.core.serverData();
+          this.showSaveNotification('Синхронізація розпочата...');
+        } else {
+          alert('Немає активних даних для синхронізації.');
+        }
+      });
+    } else {
+      // Якщо кнопки немає, створюємо її
+      this.addSyncButton();
+    }
+  }
+  
+  // Метод для додавання кнопки синхронізації, якщо її немає в HTML
+  addSyncButton() {
+    const sideButtonsContainer = document.querySelector('.side-buttons');
+    if (sideButtonsContainer) {
+      const syncBtn = document.createElement('button');
+      syncBtn.id = 'sync-now-btn';
+      syncBtn.textContent = 'Синхронізувати зараз';
+      
+      syncBtn.addEventListener('click', () => {
+        if (this.core.isExistsRecord()) {
+          this.core.serverData();
+          this.showSaveNotification('Синхронізація розпочата...');
+        } else {
+          alert('Немає активних даних для синхронізації.');
+        }
+      });
+      
+      // Додаємо кнопку першою в контейнері
+      if (sideButtonsContainer.firstChild) {
+        sideButtonsContainer.insertBefore(syncBtn, sideButtonsContainer.firstChild);
+      } else {
+        sideButtonsContainer.appendChild(syncBtn);
+      }
+    }
   }
 
   formatPlayerName(name) {
@@ -258,6 +314,14 @@ class UIService {
   truncateName(name) {
     if (!name) return 'Невідомий';
     return name.length > 16 ? name.substring(0, 16) + '...' : name;
+  }
+  
+  // Метод для очищення при видаленні
+  cleanup() {
+    if (this.updateTimer) {
+      clearInterval(this.updateTimer);
+      this.updateTimer = null;
+    }
   }
 }
 
